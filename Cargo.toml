@@ -12,6 +12,11 @@ description = "Print the header and the first N alignment records of a BAM as SA
 name = "rsomics-bam-head"
 path = "src/main.rs"
 
+
+[lib]
+name = "rsomics_bam_head"
+path = "src/lib.rs"
+doctest = false
 [dependencies]
 rsomics-common = { version = "0.6" }
 rsomics-bamio = { version = "0.1.5" }
