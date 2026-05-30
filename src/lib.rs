@@ -41,10 +41,6 @@ pub struct HeadOpts {
     pub records: u64,
 }
 
-/// Truncate the raw header text to its first `n` newline-terminated lines,
-/// matching sam_view.c `main_head`: scan for the nth `\n` and emit up to and
-/// including it; if fewer than `n` lines exist, emit the whole text. The bytes
-/// are the BAM's stored header text verbatim, so output matches `samtools head`.
 fn truncate_header_lines(text: &[u8], n: u64) -> &[u8] {
     let mut end = 0usize;
     let mut seen = 0u64;
@@ -94,17 +90,13 @@ fn run<W: Write>(input: &Path, out: &mut W, opts: &HeadOpts) -> Result<HeadStats
 
     let mut written = 0u64;
     if opts.records > 0 {
-        // Reference names indexed by refID for RNAME/RNEXT rendering.
         let ref_names: Vec<Vec<u8>> = header
             .reference_sequences()
             .keys()
             .map(|name| name.to_vec())
             .collect();
 
-        // Format raw record payloads straight to SAM bytes via our own
-        // formatter, reusing a single `RawRecord` and appending into a batch
-        // buffer flushed every ~64 KiB — no per-record allocation and one write
-        // per batch, beating noodles' generic record writer.
+        // Batch to ~64 KiB: one write per batch, one RawRecord allocation total.
         const FLUSH_AT: usize = 64 * 1024;
         let mut record = RawRecord::default();
         let mut batch = Vec::with_capacity(FLUSH_AT + 1024);
@@ -131,11 +123,8 @@ fn run<W: Write>(input: &Path, out: &mut W, opts: &HeadOpts) -> Result<HeadStats
     })
 }
 
-/// Read the BAM header twice over: once as raw stored SAM text (for verbatim
-/// output, matching `samtools head` / `sam_hdr_str`) and as a parsed model (for
-/// record formatting). The single forward pass reads magic → raw text → refs;
-/// the raw text bytes are both captured and parsed, so neither the stored text
-/// nor the reference dictionary is re-serialised away from what the file holds.
+/// Captures the raw stored SAM text for verbatim output (matching `samtools head`)
+/// while also parsing it into a header model for record formatting — one forward pass.
 fn read_header_and_text<R: Read>(
     reader: &mut bam::io::Reader<R>,
 ) -> Result<(sam::Header, Vec<u8>)> {
@@ -158,8 +147,6 @@ fn read_header_and_text<R: Read>(
         sam_reader.discard_to_end().map_err(RsomicsError::Io)?;
     }
 
-    // `parse_partial` consumes one header line at a time (sans trailing
-    // newline), mirroring noodles' own line-based header reader.
     let mut parser = sam::header::Parser::default();
     for line in raw_text.split(|&b| b == b'\n') {
         let line = line.strip_suffix(b"\r").unwrap_or(line);
